@@ -4,7 +4,7 @@ version = "1.0.0"
 authors = []
 
 [addresses]
-named_addr = "0xCAFE"
+named_addr = '0x33833308a1256a6def08436d2a9ce9c927681b734ba48ccc75ec8722f1886793'
 
 [dev-addresses]
 

@@ -1,0 +1,1 @@
+Deployed contract address: https://aptoscan.com/module/0x33833308a1256a6def08436d2a9ce9c927681b734ba48ccc75ec8722f1886793/basic_coin?network=devnet#write

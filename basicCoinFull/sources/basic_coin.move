@@ -1,74 +1,98 @@
+/// This module defines a minimal and generic Coin and Balance.
 module named_addr::basic_coin {
-
     use std::signer;
-
-    /// Address of the owner of the module
-    const MODULE_OWNER: address = @named_addr;
 
     /// Error codes
     const ENOT_MODULE_OWNER: u64 = 0;
     const EINSUFFICIENT_BALANCE: u64 = 1;
     const EALREADY_HAS_BALANCE: u64 = 2;
+    const EEQUAL_ADDR: u64 = 4;
 
-    // Struct of coin
-    struct Coin has store {
-        value: u64,
+    struct Coin<phantom CoinType> has store {
+        value: u64
     }
 
-    // Struct representing the balance of each addresses
-    struct Balance has key {
-        coin: Coin,
+    struct Balance<phantom CoinType> has key {
+        coin: Coin<CoinType>
     }
 
-    /// Publish an empty balance resource under `account` address. 
-    /// This function must be called minting or transferring
-    /// to the account.
-    public fun publish_balance(account: & signer) {
-        let empty_coin = Coin { value: 0 };
-        move_to(account, Balance { coin: empty_coin});
+    /// Publish an empty balance resource under `account`'s address. This function must be called before
+    /// minting or transferring to the account.
+    public entry fun publish_balance<CoinType>(account: &signer) {
+        let empty_coin = Coin<CoinType> { value: 0 };
+        assert!(!exists<Balance<CoinType>>(signer::address_of(account)), EALREADY_HAS_BALANCE);
+        move_to(account, Balance<CoinType> { coin: empty_coin });
     }
 
-    /// Mint `amount` tokens to `mint_addr`.
-    /// Mint must be approved by the module owner
-    public fun mint(module_owner: &signer, mint_addr: address, amount: u64) acquires Balance {
-        assert!(signer::address_of(module_owner) == MODULE_OWNER, ENOT_MODULE_OWNER);
-        
-        // Deposit `amount` of tokens to `mint_addr` balance
-        deposit(mint_addr, Coin { value: amount });
+    /// Mint `amount` tokens to `mint_addr`
+    public entry fun mint<CoinType>(mint_addr: address, amount: u64) acquires Balance {
+        // Deposit `total_value` amount of tokens to mint_addr's balance
+        deposit(mint_addr, Coin<CoinType> { value: amount });
     }
 
-    /// Returns the balance of `owner`
-    public fun balance_of(owner: address): u64 acquires Balance {
-        borrow_global<Balance>(owner).coin.value
+    public fun balance_of<CoinType>(owner: address): u64 acquires Balance {
+        borrow_global<Balance<CoinType>>(owner).coin.value
     }
 
-    /// Transfers `amount` tokens from `from` to `to`
-    public fun transfer(from: &signer, to: address, amount: u64) acquires Balance {
-        let check = withdraw(signer::address_of(from), amount);
-        deposit(to, check);
+    spec balance_of {
+        pragma aborts_if_is_strict;
+        aborts_if !exists<Balance<CoinType>>(owner);
     }
 
-    /// Widraw `amount` number of tokens from the balance under `addr`
-    fun withdraw(addr: address, amount: u64): Coin acquires Balance {
-        let balance = balance_of(addr);
-        // balance must be greater than the withdraw amount
+    /// Transfers `amount` of tokens from `from` to `to`
+    public entry fun transfer<CoinType>(from: &signer, to: address, amount: u64) acquires Balance {
+        let from_addr = signer::address_of(from);
+        assert!(from_addr != to, EEQUAL_ADDR);
+        let check = withdraw<CoinType>(from_addr, amount);
+        deposit<CoinType>(to, check);
+    }
+
+    spec transfer {
+        let addr_from = signer::address_of(from);
+
+        let balance_from = global<Balance<CoinType>>(addr_from).coin.value;
+        let balance_to = global<Balance<CoinType>>(to).coin.value;
+        let post balance_from_post = global<Balance<CoinType>>(addr_from).coin.value;
+        let post balance_to_post = global<Balance<CoinType>>(to).coin.value;
+
+        ensures balance_from_post == balance_from - amount;
+        ensures balance_to_post == balance_to + amount;
+    }
+
+    fun withdraw<CoinType>(addr: address, amount: u64) : Coin<CoinType> acquires Balance {
+        let balance = balance_of<CoinType>(addr);
         assert!(balance >= amount, EINSUFFICIENT_BALANCE);
-        let balance_ref = &mut borrow_global_mut<Balance>(addr).coin.value;
+        let balance_ref = &mut borrow_global_mut<Balance<CoinType>>(addr).coin.value;
         *balance_ref = balance - amount;
-        Coin { value: amount }
+        Coin<CoinType> { value: amount }
     }
 
-    /// Deposit `amount` number of tokens to the balance under `addr`
-    fun deposit(_addr: address, check: Coin) acquires Balance {
-        let Coin { value: _amount} = check;
-        let balance = balance_of(_addr);
+    spec withdraw {
+        let balance = global<Balance<CoinType>>(addr).coin.value;
 
-        // Get a mutable reference of addr's balance's coin value
-        let balance_ref = &mut borrow_global_mut<Balance>(_addr).coin.value;
+        aborts_if !exists<Balance<CoinType>>(addr);
+        aborts_if balance < amount;
 
-        // Increment the value by `amount`
-        *balance_ref = balance + _amount;
+        let post balance_post = global<Balance<CoinType>>(addr).coin.value;
+        ensures result == Coin<CoinType> { value: amount };
+        ensures balance_post == balance - amount;
     }
 
+    fun deposit<CoinType>(addr: address, check: Coin<CoinType>) acquires Balance{
+        let balance = balance_of<CoinType>(addr);
+        let balance_ref = &mut borrow_global_mut<Balance<CoinType>>(addr).coin.value;
+        let Coin { value } = check;
+        *balance_ref = balance + value;
+    }
 
+    spec deposit {
+        let balance = global<Balance<CoinType>>(addr).coin.value;
+        let check_value = check.value;
+
+        aborts_if !exists<Balance<CoinType>>(addr);
+        aborts_if balance + check_value > MAX_U64;
+
+        let post balance_post = global<Balance<CoinType>>(addr).coin.value;
+        ensures balance_post == balance + check_value;
+    }
 }
