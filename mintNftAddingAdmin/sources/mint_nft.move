@@ -1,6 +1,8 @@
-module mint_nft::create_nft_with_resource_account {
+module mint_nft::create_nft_with_resource_and_admin_accounts {
+    use std::error;
     use std::string;
     use std::vector;
+
     use aptos_token::token;
     use std::signer;
     use std::string::String;
@@ -8,13 +10,23 @@ module mint_nft::create_nft_with_resource_account {
     use aptos_framework::account::SignerCapability;
     use aptos_framework::resource_account;
     use aptos_framework::account;
+    use aptos_framework::timestamp;
 
     /// Declare struct stores an NFT'collection's relavant infomation
     struct ModuleData has key {
         // Store signer capability so module can programmatically sign for transactions
         signer_cap: SignerCapability,
         token_data_id: TokenDataId,
+        expiration_timestamp: u64,
+        minting_enabled: bool
     }
+
+    /// Action not authorized because the signer is not admin of this module
+    const ENOT_AUTHORIZED: u64 = 1;
+    /// The collection minting is expired
+    const ECOLLECTION_EXPIRED: u64 = 2;
+    /// The collection minting is disabled
+    const EMINTING_DISABLED: u64 = 3;
 
     /// `init_module` is automatically called when publishing module
     /// Create an Artify's Collection and an Artify Nft Token
@@ -58,18 +70,18 @@ module mint_nft::create_nft_with_resource_account {
             // when a user successfully mints a token in the `mint_event_ticket()` function
             vector<String>[string::utf8(b"given_to")],
             vector<vector<u8>>[b""],
-            vector<String>[ string::utf8(b"address") ],
+            vector<String>[string::utf8(b"address")],
         );
 
-        // Retrieve the resource signer's signer capability and store it within the `ModuleData`
-        // Note that by calling `resource_account::retrieve_resource_account_cap` to retrieve the resource account's signer capability,
-        // we rotate the resource account's authentication key to 0 and give up our control over the resource account. Before calling this function,
-        // the resource account has the same authentication key as the source account so we had control over the resource account.
+        // Store token data id within the module, so we can refer to it 
+        // later when we're minting NFT
         let resource_signer_cap = resource_account::retrieve_resource_account_cap(resource_signer, @source_addr);
 
         move_to(resource_signer, ModuleData {
             signer_cap: resource_signer_cap,
             token_data_id,
+            minting_enabled: false,
+            expiration_timestamp: 10000000000,
         });
     }
 
@@ -79,6 +91,10 @@ module mint_nft::create_nft_with_resource_account {
     public entry fun mint_event_ticket(receiver: &signer) acquires ModuleData {
         let module_data = borrow_global_mut<ModuleData>(@mint_nft);
 
+        // Check the config of this module to see if we enable minting tokens from this collection
+        assert!(timestamp::now_seconds() < module_data.expiration_timestamp, error::permission_denied(ECOLLECTION_EXPIRED));
+        assert!(module_data.minting_enabled, error::permission_denied(EMINTING_DISABLED));
+
         // Create a signer of the resource account from the signer capability stored in this module.
         // Using a resource account and storing its signer capability within the module allows the module to programmatically
         // sign transactions on behalf of the module.
@@ -86,6 +102,10 @@ module mint_nft::create_nft_with_resource_account {
         let token_id = token::mint_token(&resource_signer, module_data.token_data_id, 1);
         token::direct_transfer(&resource_signer, receiver, token_id, 1);
 
+        // Mutate the token properties to update the property version of this token.
+        // Note that here we are re-using the same token data id and only updating the property version.
+        // This is because we are simply printing edition of the same token, instead of creating unique
+        // tokens. The tokens created this way will have the same token data id, but different property versions.
         let (creator_address, collection, name) = token::get_token_data_id_fields(&module_data.token_data_id);
         token::mutate_token_properties(
             &resource_signer,
@@ -99,5 +119,26 @@ module mint_nft::create_nft_with_resource_account {
             vector::empty<vector<u8>>(),
             vector::empty<String>(),
         );
+    }
+
+    /// Set if minting is enabled for this minting contract
+    public entry fun set_minting_enabled(caller: &signer, minting_enabled: bool) acquires ModuleData {
+        let caller_address = signer::address_of(caller);
+
+        // Abort if the caller is not the admin of this module
+        assert!(caller_address == @admin_addr, error::permission_denied(ENOT_AUTHORIZED));
+
+        let module_data = borrow_global_mut<ModuleData>(@mint_nft);
+        module_data.minting_enabled = minting_enabled;
+    }
+
+    /// Set the expiration timestamp of this minting contract.
+    public entry fun set_timestamp(caller: &signer, expiration_timestamp: u64) acquires ModuleData {
+        let caller_address = signer::address_of(caller);
+
+        assert!(caller_address == @admin_addr, error::permission_denied(ENOT_AUTHORIZED));
+        
+        let module_data = borrow_global_mut<ModuleData>(@mint_nft);
+        module_data.expiration_timestamp = expiration_timestamp;
     }
 }
