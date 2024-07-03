@@ -1,0 +1,24 @@
+[package]
+name = "mintNft"
+version = "1.0.0"
+authors = []
+
+[addresses]
+mint_nft = '_'
+aptos_framework = "0x1"
+aptos_token = "0x3"
+
+
+[dev-addresses]
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-core.git"
+rev = "mainnet"
+subdir = "aptos-move/framework/aptos-framework"
+
+[dependencies.AptosToken]
+git = "https://github.com/aptos-labs/aptos-core.git"
+rev = "mainnet"
+subdir = "aptos-move/framework/aptos-token"
+
+[dev-dependencies]

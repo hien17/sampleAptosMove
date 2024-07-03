@@ -1,0 +1,23 @@
+[package]
+name = "delayedMintNft"
+version = "1.0.0"
+authors = []
+
+[addresses]
+mint_nft = '68748f24fe276260aaca531117e1456f0d402d922d16f5ca902bb063f14b66d5'
+aptos_framework = "0x1"
+
+[dev-addresses]
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-core.git"
+rev = "mainnet"
+subdir = "aptos-move/framework/aptos-framework"
+
+[dependencies.AptosToken]
+git = "https://github.com/aptos-labs/aptos-core.git"
+rev = "mainnet"
+subdir = "aptos-move/framework/aptos-token"
+
+[dev-dependencies]
+
